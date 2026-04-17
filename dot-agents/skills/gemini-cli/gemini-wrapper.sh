@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+# gemini-wrapper.sh - Call Gemini CLI non-interactively with stable output.
+
+set -euo pipefail
+
+MODE="ask"
+RESUME_ID=""
+MODEL=""
+FULL_LOG=false
+PROMPT=""
+REVIEW_ARGS=()
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  gemini-wrapper.sh [OPTIONS] [PROMPT]
+  gemini-wrapper.sh --review [--uncommitted | --base BRANCH | --commit REV] [PROMPT]
+
+Options:
+  --review          Include VCS diff context and request a review/debug pass.
+  --resume ID       Resume an existing Gemini session.
+  --uncommitted     (review mode) Review working tree diff.
+  --base BRANCH     (review mode) Review changes against merge-base with BRANCH.
+  --commit REV      (review mode) Review a specific commit/revision.
+  --model MODEL     Gemini model name.
+  --full-log        Print full log path in metadata header.
+  -h, --help        Show this help.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --review)
+      MODE="review"
+      shift
+      ;;
+    --resume)
+      MODE="resume"
+      RESUME_ID="${2:-}"
+      if [[ -z "$RESUME_ID" ]]; then
+        echo "Missing value for --resume" >&2
+        exit 2
+      fi
+      shift 2
+      ;;
+    --uncommitted)
+      REVIEW_ARGS+=("--uncommitted")
+      shift
+      ;;
+    --base)
+      REVIEW_ARGS+=("--base" "${2:-}")
+      if [[ -z "${2:-}" ]]; then
+        echo "Missing value for --base" >&2
+        exit 2
+      fi
+      shift 2
+      ;;
+    --commit)
+      REVIEW_ARGS+=("--commit" "${2:-}")
+      if [[ -z "${2:-}" ]]; then
+        echo "Missing value for --commit" >&2
+        exit 2
+      fi
+      shift 2
+      ;;
+    --model)
+      MODEL="${2:-}"
+      if [[ -z "$MODEL" ]]; then
+        echo "Missing value for --model" >&2
+        exit 2
+      fi
+      shift 2
+      ;;
+    --full-log)
+      FULL_LOG=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      PROMPT="$*"
+      break
+      ;;
+    *)
+      if [[ -z "$PROMPT" ]]; then
+        PROMPT="$1"
+      else
+        PROMPT="$PROMPT $1"
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$PROMPT" ]] && [[ ! -t 0 ]]; then
+  PROMPT="$(cat)"
+fi
+
+if [[ -z "$PROMPT" ]]; then
+  PROMPT="Please help with this task."
+fi
+
+detect_vcs() {
+  if command -v sl >/dev/null 2>&1 && sl root >/dev/null 2>&1; then
+    echo "sl"
+  elif git rev-parse --show-toplevel >/dev/null 2>&1; then
+    echo "git"
+  else
+    echo "none"
+  fi
+}
+
+build_review_diff() {
+  local vcs="$1"
+  local mode="uncommitted"
+  local value=""
+
+  local i=0
+  while [[ $i -lt ${#REVIEW_ARGS[@]} ]]; do
+    case "${REVIEW_ARGS[$i]}" in
+      --uncommitted)
+        mode="uncommitted"
+        ;;
+      --base)
+        mode="base"
+        i=$((i + 1))
+        value="${REVIEW_ARGS[$i]:-}"
+        ;;
+      --commit)
+        mode="commit"
+        i=$((i + 1))
+        value="${REVIEW_ARGS[$i]:-}"
+        ;;
+    esac
+    i=$((i + 1))
+  done
+
+  case "$vcs" in
+    git)
+      case "$mode" in
+        uncommitted) git diff ;;
+        base) git diff "$(git merge-base HEAD "$value")"..HEAD ;;
+        commit) git show --patch --stat "$value" ;;
+      esac
+      ;;
+    sl)
+      case "$mode" in
+        uncommitted) sl diff ;;
+        base) sl diff -r "ancestor(., $value)" -r . ;;
+        commit) sl show "$value" ;;
+      esac
+      ;;
+    *)
+      echo "No supported VCS detected for --review" >&2
+      return 1
+      ;;
+  esac
+}
+
+if [[ "$MODE" == "review" ]]; then
+  VCS="$(detect_vcs)"
+  DIFF_TEXT="$(build_review_diff "$VCS")"
+  PROMPT="You are an expert reviewer/debugger. Focus on correctness risks, regressions, missing tests, and concrete fixes.\n\nTask:\n$PROMPT\n\nContext diff:\n\n$DIFF_TEXT"
+fi
+
+LOG_DIR="${GEMINI_LOG_DIR:-/tmp/gemini-logs}"
+mkdir -p "$LOG_DIR"
+TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+LOG_FILE="$LOG_DIR/gemini-${TIMESTAMP}-$$.log"
+EVENTS_FILE="$LOG_DIR/gemini-${TIMESTAMP}-$$.events.jsonl"
+
+CMD=(gemini -o stream-json -p "$PROMPT")
+
+if [[ -n "$MODEL" ]]; then
+  CMD+=(--model "$MODEL")
+fi
+if [[ "$MODE" == "resume" ]]; then
+  CMD+=(--resume "$RESUME_ID")
+fi
+
+set +e
+"${CMD[@]}" > "$LOG_FILE" 2>&1
+EXIT_CODE=$?
+set -e
+
+awk '/^\{/{print}' "$LOG_FILE" > "$EVENTS_FILE"
+
+SESSION_ID=""
+if [[ -s "$EVENTS_FILE" ]]; then
+  SESSION_ID="$(jq -r 'select(.type == "init") | .session_id' "$EVENTS_FILE" 2>/dev/null | tail -n 1)"
+fi
+
+ASSISTANT_TEXT=""
+if [[ -s "$EVENTS_FILE" ]]; then
+  ASSISTANT_TEXT="$(jq -r 'select(.type == "message" and .role == "assistant" and .delta == true) | .content' "$EVENTS_FILE" 2>/dev/null)"
+fi
+
+echo "=== GEMINI SESSION ==="
+if [[ -n "$SESSION_ID" && "$SESSION_ID" != "null" ]]; then
+  echo "session_id: $SESSION_ID"
+fi
+echo "exit_code: $EXIT_CODE"
+if [[ "$FULL_LOG" == true ]]; then
+  echo "full_log: $LOG_FILE"
+fi
+echo "======================"
+echo ""
+
+if [[ -n "$ASSISTANT_TEXT" ]]; then
+  printf '%s\n' "$ASSISTANT_TEXT"
+else
+  cat "$LOG_FILE"
+  if [[ $EXIT_CODE -ne 0 ]]; then
+    echo "[gemini exited with code $EXIT_CODE]"
+  fi
+fi
+
+exit $EXIT_CODE
