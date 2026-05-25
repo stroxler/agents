@@ -1,4 +1,9 @@
-# codex
+---
+name: codex-cli
+description: Use this skill when you want an independent opinion from Codex through the CLI while another agent remains the primary driver, including design review, implementation review, debugging hypotheses, and risky refactor sanity checks.
+---
+
+# codex-cli
 
 Use this skill when you want an independent opinion from Codex (OpenAI) while keeping another agent as the primary driver.
 
@@ -24,43 +29,43 @@ Avoid for:
 
 ## Wrapper location
 
-`~/.llms/skills/codex/codex-wrapper.sh`
+`~/.llms/skills/codex-cli/codex-wrapper.sh`
 
 ## Usage patterns
 
 ### Ask Codex a focused question
 ```bash
-~/.llms/skills/codex/codex-wrapper.sh --full-log "Review this approach for race conditions"
+~/.llms/skills/codex-cli/codex-wrapper.sh --full-log "Review this approach for race conditions"
 ```
 
 ### Review uncommitted changes
 ```bash
-~/.llms/skills/codex/codex-wrapper.sh --review --uncommitted --full-log "Find correctness risks and missing tests"
+~/.llms/skills/codex-cli/codex-wrapper.sh --review --uncommitted --full-log "Find correctness risks and missing tests"
 ```
 
 ### Review against a base branch
 ```bash
-~/.llms/skills/codex/codex-wrapper.sh --review --base main --full-log "Review for regressions"
+~/.llms/skills/codex-cli/codex-wrapper.sh --review --base main --full-log "Review for regressions"
 ```
 
 ### Review a specific commit or revision
 ```bash
-~/.llms/skills/codex/codex-wrapper.sh --review --commit HEAD --full-log "Audit this change"
+~/.llms/skills/codex-cli/codex-wrapper.sh --review --commit HEAD --full-log "Audit this change"
 ```
 
 ### Resume a previous Codex session (required for ongoing conversation)
 ```bash
-~/.llms/skills/codex/codex-wrapper.sh --resume <session-id> --full-log "Follow up on finding #2"
+~/.llms/skills/codex-cli/codex-wrapper.sh --resume <session-id> --full-log "Follow up on finding #2"
 ```
 
 ### Select a specific model
 ```bash
-~/.llms/skills/codex/codex-wrapper.sh --model o3 --full-log "Stress-test this migration plan"
+~/.llms/skills/codex-cli/codex-wrapper.sh --model o3 --full-log "Stress-test this migration plan"
 ```
 
 ### Full-auto mode (trusted env only)
 ```bash
-~/.llms/skills/codex/codex-wrapper.sh --full-auto --full-log "Investigate why this test is flaky"
+~/.llms/skills/codex-cli/codex-wrapper.sh --full-auto --full-log "Investigate why this test is flaky"
 ```
 
 ## Output format

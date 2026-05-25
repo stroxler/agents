@@ -142,6 +142,7 @@ if [[ "$EPHEMERAL" == true ]]; then
   CMD+=(--ephemeral)
 fi
 
+CMD+=(--skip-git-repo-check)
 CMD+=(--json -o "$LAST_MSG_FILE")
 CMD+=("$PROMPT")
 

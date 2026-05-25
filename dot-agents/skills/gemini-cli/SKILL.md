@@ -1,3 +1,8 @@
+---
+name: gemini-cli
+description: Use this skill when you want an additional independent opinion from Gemini while Codex remains the primary driver, especially for plan review, alternative framing, implementation review, regression hunting, debugging hypotheses, and concise conceptual explanations.
+---
+
 # gemini-cli
 
 Use this skill when you want an additional independent opinion from Gemini while keeping Codex as the primary driver.

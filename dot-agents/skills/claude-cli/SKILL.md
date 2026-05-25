@@ -1,3 +1,8 @@
+---
+name: claude-cli
+description: Use this skill when you want a second opinion from Claude while keeping Codex as the primary driver, including design review, implementation review, debugging hypotheses, risky refactor sanity checks, and integration-heavy investigations.
+---
+
 # claude-cli
 
 Use this skill when you want a second opinion from Claude while keeping Codex as the primary driver.
