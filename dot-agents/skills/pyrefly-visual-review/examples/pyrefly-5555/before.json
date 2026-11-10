@@ -1,0 +1,100 @@
+{
+  "errors": [
+    {
+      "line": 13,
+      "column": 13,
+      "stop_line": 13,
+      "stop_column": 22,
+      "path": "cases.py",
+      "code": -2,
+      "name": "bad-argument-count",
+      "description": "Expected 0 positional arguments, got 1 in function `no_args`",
+      "concise_description": "Expected 0 positional arguments, got 1 in function `no_args`",
+      "severity": "error"
+    },
+    {
+      "line": 14,
+      "column": 13,
+      "stop_line": 14,
+      "stop_column": 16,
+      "path": "cases.py",
+      "code": -2,
+      "name": "bad-argument-count",
+      "description": "Expected 0 positional arguments, got 1 in function `no_args`",
+      "concise_description": "Expected 0 positional arguments, got 1 in function `no_args`",
+      "severity": "error"
+    },
+    {
+      "line": 15,
+      "column": 14,
+      "stop_line": 15,
+      "stop_column": 17,
+      "path": "cases.py",
+      "code": -2,
+      "name": "bad-argument-count",
+      "description": "Expected 1 positional argument, got 2 in function `unary`",
+      "concise_description": "Expected 1 positional argument, got 2 in function `unary`",
+      "severity": "error"
+    },
+    {
+      "line": 16,
+      "column": 13,
+      "stop_line": 16,
+      "stop_column": 20,
+      "path": "cases.py",
+      "code": -2,
+      "name": "bad-argument-count",
+      "description": "Expected 0 positional arguments, got 1 in function `no_args`",
+      "concise_description": "Expected 0 positional arguments, got 1 in function `no_args`",
+      "severity": "error"
+    },
+    {
+      "line": 17,
+      "column": 13,
+      "stop_line": 17,
+      "stop_column": 20,
+      "path": "cases.py",
+      "code": -2,
+      "name": "bad-argument-count",
+      "description": "Expected 0 positional arguments, got 1 in function `no_args`",
+      "concise_description": "Expected 0 positional arguments, got 1 in function `no_args`",
+      "severity": "error"
+    },
+    {
+      "line": 20,
+      "column": 13,
+      "stop_line": 20,
+      "stop_column": 18,
+      "path": "cases.py",
+      "code": -2,
+      "name": "bad-argument-count",
+      "description": "Expected 0 positional arguments, got 1 in function `no_args`",
+      "concise_description": "Expected 0 positional arguments, got 1 in function `no_args`",
+      "severity": "error"
+    },
+    {
+      "line": 22,
+      "column": 16,
+      "stop_line": 22,
+      "stop_column": 29,
+      "path": "cases.py",
+      "code": -2,
+      "name": "reveal-type",
+      "description": "revealed type: int",
+      "concise_description": "revealed type: int",
+      "severity": "error"
+    },
+    {
+      "line": 23,
+      "column": 16,
+      "stop_line": 23,
+      "stop_column": 33,
+      "path": "cases.py",
+      "code": -2,
+      "name": "reveal-type",
+      "description": "revealed type: int",
+      "concise_description": "revealed type: int",
+      "severity": "error"
+    }
+  ]
+}

@@ -1,0 +1,1663 @@
+{
+  "sourceURL": "https://github.com/meta/pyrefly/blob/2a215a3bb5880f5f7e94a2d7cb65d12850247c2b/pyrefly/lib/alt/callable.rs",
+  "cases": [
+    {
+      "id": "zero",
+      "short": "\u2460 The actual regression",
+      "kind": "PR regression test \u00b7 #5542",
+      "title": "no_args(*xs)",
+      "status": "Fixed by this PR",
+      "summary": "The element type is int. The length is unknown and may be zero.",
+      "python": "def no_args() -> int:\n    return 0\n\ndef forward(xs: list[int]) -> None:\n    no_args(*xs)\n\nforward([])",
+      "witness": "xs = [] \u2192 no_args() \u2192 0",
+      "runtimeNote": "The checker analyzes forward once with xs: list[int]. It does not substitute [] from the call below.",
+      "params": [],
+      "state": {
+        "prefix": [],
+        "middle": "int",
+        "suffix": [],
+        "consumed": 0,
+        "matched": false,
+        "done": false,
+        "any": false,
+        "remaining": []
+      },
+      "steps": [
+        [
+          "The input is a list type, not a list value.",
+          "This is the exact Python example added to the PR. xs: list[int] permits [], [7], [7, 8], \u2026"
+        ],
+        [
+          "pre_eval creates one reusable Star object.",
+          "prefix=[], middle=int, suffix=[]; consumed=0, matched=false, done=false. The dashed region denotes 0\u2026many ints."
+        ],
+        [
+          "There is nothing to match.",
+          "rparams starts empty. post_check and advance_after_match are never called for this splat."
+        ],
+        [
+          "param = None; matched is still false.",
+          "This is where the diff runs. post_infer does not mutate a Star; no source type or argument value changes here."
+        ],
+        [
+          "Only the error decision changes.",
+          "Before: one extra source range is counted. After: zero extra ranges; no bad-argument-count diagnostic."
+        ]
+      ],
+      "outcomeTitle": "Verified: error \u2192 no arity error",
+      "outcome": "Before says \u201cExpected 0 positional arguments, got 1.\u201d After reports no error for this line. The old \u201c1\u201d counts the splat expression\u2014not a known runtime element.",
+      "lessonTitle": "matched is history, not a minimum-length proof.",
+      "lesson": "This splat has matched no parameter. That does not prove that it supplies an extra argument. Empty fixed ends plus an ordinary unknown-length middle allow zero.",
+      "tracePython": "def no_args() -> int: return 0\n\ndef forward(xs: list[int]) -> None:\n    no_args(*xs)",
+      "traceFocus": "no_args(*xs)"
+    },
+    {
+      "id": "union",
+      "short": "\u2461 Lost length information",
+      "kind": "Introduced false negative \u00b7 verified",
+      "title": "no_args(*xs), where every union arm is nonempty",
+      "status": "New regression",
+      "summary": "The gate looks at a normalized shape whose length information was already erased.",
+      "python": "def no_args() -> int: return 0\n\ndef g(xs: tuple[int] | tuple[int, int]) -> None:\n    no_args(*xs)",
+      "witness": "xs = (7,) or (7, 8) \u2192 TypeError",
+      "runtimeNote": "Neither possible tuple is empty. No runtime value satisfying this annotation can make the call valid.",
+      "params": [],
+      "state": {
+        "prefix": [],
+        "middle": "int",
+        "suffix": [],
+        "consumed": 0,
+        "matched": false,
+        "done": false,
+        "any": false,
+        "remaining": []
+      },
+      "steps": [
+        [
+          "Both alternatives have a nonzero length.",
+          "tuple[int] has length 1; tuple[int, int] has length 2. The true minimum is 1."
+        ],
+        [
+          "Information is lost here: [1, 2] is not one fixed length.",
+          "pre_eval takes the fallback at lines 561\u2013588, producing Star([], int, []). Its representation is identical to the list case."
+        ],
+        [
+          "No parameter consumes anything.",
+          "matched remains false and consumed remains zero, exactly as in the intended regression test."
+        ],
+        [
+          "The new gate cannot distinguish this from list[int].",
+          "has_unconsumed_fixed is false. Absence of retained fixed ends does NOT establish that the original input may be empty."
+        ],
+        [
+          "A definite bad call is now accepted.",
+          "Before rejects it; after has no bad-argument-count error. The changed gate relies on a minimum-length fact its input representation does not preserve."
+        ]
+      ],
+      "outcomeTitle": "Verified: error \u2192 no error, but runtime always fails",
+      "outcome": "This is an introduced false negative. The missing information is in pre_eval; the new predicate exposes the loss. Preserve a proven lower bound (or the alternatives), rather than assuming empty fixed ends prove zero is possible.",
+      "lessonTitle": "Same lowered state; different real-world possibilities.",
+      "lesson": "Compare this case with \u2460. The data lens is identical after lowering, although one input can be empty and the other cannot. A predicate downstream cannot recover erased information.",
+      "tracePython": "def no_args() -> int: return 0\n\ndef g(xs: tuple[int] | tuple[int, int]) -> None:\n    no_args(*xs)",
+      "traceFocus": "no_args(*xs)"
+    },
+    {
+      "id": "explicit",
+      "short": "\u2462 After an explicit argument",
+      "kind": "Additional positive coverage",
+      "title": "unary(1, *xs)",
+      "status": "Fixed by this PR",
+      "summary": "The callable had a parameter, but an earlier argument already consumed it.",
+      "python": "def unary(x: int) -> None: ...\n\ndef g(xs: list[int]) -> None:\n    unary(1, *xs)",
+      "witness": "xs = [] \u2192 unary(1) \u2192 valid",
+      "runtimeNote": "With a nonempty xs the call can still fail. This is the existing permissive unknown-length policy, not a universal runtime safety claim.",
+      "params": [
+        "x: int"
+      ],
+      "state": {
+        "prefix": [],
+        "middle": "int",
+        "suffix": [],
+        "consumed": 0,
+        "matched": false,
+        "done": false,
+        "any": false,
+        "remaining": []
+      },
+      "steps": [
+        [
+          "There are two source arguments.",
+          "The ordinary argument 1 precedes the splat. Initially rparams holds x: int."
+        ],
+        [
+          "The splat gets a fresh Star with matched=false.",
+          "The history flag belongs to this splat, not to the whole callable or earlier arguments."
+        ],
+        [
+          "The explicit 1 has already popped x.",
+          "rparams is now []. The later *xs has matched nothing, so its matched flag stays false."
+        ],
+        [
+          "There is no next positional parameter.",
+          "Empty prefix/suffix make has_unconsumed_fixed=false. The PR now permits this later splat to contribute zero arguments."
+        ],
+        [
+          "The spurious extra-argument diagnostic disappears.",
+          "Before reports \u201cExpected 1 positional argument, got 2.\u201d After has no arity error on this line."
+        ]
+      ],
+      "outcomeTitle": "Verified: error \u2192 no arity error",
+      "outcome": "The PR fixes more than zero-parameter definitions. An entirely new splat after earlier arguments has the same local state as the zero-parameter case.",
+      "lessonTitle": "matched is reset for each source splat.",
+      "lesson": "An earlier successful argument does not set this splat\u2019s matched flag. Track rparams separately from the splat\u2019s local cursor.",
+      "tracePython": "def unary(x: int) -> None: ...\n\ndef g(xs: list[int]) -> None:\n    unary(1, *xs)",
+      "traceFocus": "unary(1, *xs)"
+    },
+    {
+      "id": "prefix",
+      "short": "\u2463 The fixed-prefix guard",
+      "kind": "Negative control",
+      "title": "no_args(*xs), xs: tuple[int, *tuple[int, ...]]",
+      "status": "Still rejected",
+      "summary": "At least one leading int must be passed, even if the variable middle is empty.",
+      "python": "def no_args() -> int: return 0\n\ndef g(xs: tuple[int, *tuple[int, ...]]) -> None:\n    no_args(*xs)",
+      "witness": "xs = (7,) \u2192 no_args(7) \u2192 TypeError",
+      "runtimeNote": "Minimum length = 1, represented by a retained fixed prefix.",
+      "params": [],
+      "state": {
+        "prefix": [
+          "int"
+        ],
+        "middle": "int",
+        "suffix": [],
+        "consumed": 0,
+        "matched": false,
+        "done": false,
+        "any": false,
+        "remaining": []
+      },
+      "steps": [
+        [
+          "The tuple has one mandatory leading element.",
+          "The remaining int sequence can be empty."
+        ],
+        [
+          "The single unpacked shape is preserved.",
+          "prefix=[int], middle=int, suffix=[]; consumed=0."
+        ],
+        [
+          "No parameter can consume the leading int.",
+          "rparams is empty, matched=false, consumed=0."
+        ],
+        [
+          "consumed < prefix.len(): 0 < 1 is true.",
+          "has_unconsumed_fixed=true. matched=false and middle is not Any, so extra_arg=true."
+        ],
+        [
+          "Both versions reject this call.",
+          "This guards against confusing unknown total length with zero minimum length."
+        ]
+      ],
+      "outcomeTitle": "Verified: error \u2192 error",
+      "outcome": "The PR preserves this mandatory-prefix case. It should appear in focused regression coverage.",
+      "lessonTitle": "A retained prefix is positive length evidence.",
+      "lesson": "consumed counts only matched fixed prefix elements. A prefix element still ahead of the cursor proves something remains to be passed.",
+      "tracePython": "def no_args() -> int: return 0\n\ndef g(xs: tuple[int, *tuple[int, ...]]) -> None:\n    no_args(*xs)",
+      "traceFocus": "no_args(*xs)"
+    },
+    {
+      "id": "suffix",
+      "short": "\u2464 The fixed-suffix guard",
+      "kind": "Negative control",
+      "title": "no_args(*xs), xs: tuple[*tuple[int, ...], int]",
+      "status": "Still rejected",
+      "summary": "The unknown-length middle is followed by a mandatory ending int.",
+      "python": "def no_args() -> int: return 0\n\ndef g(xs: tuple[*tuple[int, ...], int]) -> None:\n    no_args(*xs)",
+      "witness": "xs = (7,) \u2192 no_args(7) \u2192 TypeError",
+      "runtimeNote": "Minimum length = 1, represented by a retained suffix rather than a prefix.",
+      "params": [],
+      "state": {
+        "prefix": [],
+        "middle": "int",
+        "suffix": [
+          "int"
+        ],
+        "consumed": 0,
+        "matched": false,
+        "done": false,
+        "any": false,
+        "remaining": []
+      },
+      "steps": [
+        [
+          "One final int is mandatory.",
+          "Even a zero-length middle cannot remove the trailing element."
+        ],
+        [
+          "The tuple shape retains its suffix.",
+          "prefix=[], middle=int, suffix=[int]."
+        ],
+        [
+          "There is no matching call to mutate anything.",
+          "matched=false. consumed remains 0; it is not a suffix cursor."
+        ],
+        [
+          "!suffix.is_empty() is true.",
+          "has_unconsumed_fixed=true; both predicates reject when matched=false and middle is not Any."
+        ],
+        [
+          "Both versions report an extra argument.",
+          "This is the second side of the guard that the new test does not cover."
+        ]
+      ],
+      "outcomeTitle": "Verified: error \u2192 error",
+      "outcome": "A retained nonempty suffix prevents the new zero-length allowance.",
+      "lessonTitle": "suffix is retained shape, not a destructively popped queue.",
+      "lesson": "advance_after_match updates consumed for fixed prefix positions. It does not shorten suffix; that matters when interpreting the matched shortcut.",
+      "tracePython": "def no_args() -> int: return 0\n\ndef g(xs: tuple[*tuple[int, ...], int]) -> None:\n    no_args(*xs)",
+      "traceFocus": "no_args(*xs)"
+    },
+    {
+      "id": "matched",
+      "short": "\u2465 matched bypasses a remainder",
+      "kind": "Preexisting false negative \u00b7 not introduced",
+      "title": "unary(*xs), xs: tuple[int, int, *tuple[int, ...]]",
+      "status": "Existing hole retained",
+      "summary": "The first fixed int matches x, while a second mandatory int still remains.",
+      "python": "def unary(x: int) -> None: ...\n\ndef g(xs: tuple[int, int, *tuple[int, ...]]) -> None:\n    unary(*xs)",
+      "witness": "xs = (7, 8) \u2192 unary(7, 8) \u2192 TypeError",
+      "runtimeNote": "Minimum length = 2. A one-parameter function cannot accept any value of this tuple type.",
+      "params": [
+        "x: int"
+      ],
+      "state": {
+        "prefix": [
+          "int",
+          "int"
+        ],
+        "middle": "int",
+        "suffix": [],
+        "consumed": 1,
+        "matched": true,
+        "done": false,
+        "any": false,
+        "remaining": []
+      },
+      "steps": [
+        [
+          "Two leading ints are mandatory.",
+          "The variadic middle may be empty, but the total is still at least two."
+        ],
+        [
+          "Both fixed prefix elements are retained.",
+          "prefix=[int,int], consumed=0, matched=false before matching."
+        ],
+        [
+          "The first int matches x.",
+          "post_check offers prefix[0]=int. advance_after_match increments consumed to 1 and sets matched=true; rparams.pop removes x."
+        ],
+        [
+          "One mandatory prefix element remains.",
+          "1 < 2 gives has_unconsumed_fixed=true, but matched=true bypasses the fixed-remainder check."
+        ],
+        [
+          "The definite extra argument is still ignored.",
+          "Both before and after accept this line. This is a preexisting issue\u2014not a regression added by #5555."
+        ]
+      ],
+      "outcomeTitle": "Verified: no error \u2192 no error (runtime always fails)",
+      "outcome": "The matched shortcut dominates the new fixed-tail guard. The PR does not fix this old false negative; report it separately rather than silently expanding this PR.",
+      "lessonTitle": "A history bit can override a present-state fact.",
+      "lesson": "The visual conflict is explicit: one uncrossed fixed token remains, but matched=true sends control to \u201cDo not count.\u201d This is independent of the intended zero-length fix.",
+      "tracePython": "def unary(x: int) -> None: ...\n\ndef g(xs: tuple[int, int, *tuple[int, ...]]) -> None:\n    unary(*xs)",
+      "traceFocus": "unary(*xs)"
+    },
+    {
+      "id": "overload",
+      "short": "\u2466 The overload consequence",
+      "kind": "Return-type behavior change \u00b7 verified",
+      "title": "choose(*xs): int \u2192 str",
+      "status": "Needs an explicit policy/test",
+      "summary": "Permitting the zero-parameter candidate changes overload selection, not only diagnostics.",
+      "python": "from typing import overload\n\n@overload\ndef choose() -> str: ...\n@overload\ndef choose(x: int, /) -> int: ...\ndef choose(*args: int) -> str | int:\n    return args[0] if args else \"empty\"\n\ndef g(xs: list[int]):\n    reveal_type(choose(*xs))",
+      "witness": "xs = [] \u2192 \"empty\"; xs = [7] \u2192 7",
+      "runtimeNote": "Both results are possible. The baseline\u2019s int was already incomplete for an empty list; the PR\u2019s str is incomplete for a singleton.",
+      "params": [],
+      "state": {
+        "prefix": [],
+        "middle": "int",
+        "suffix": [],
+        "consumed": 0,
+        "matched": false,
+        "done": false,
+        "any": false,
+        "remaining": []
+      },
+      "overloadAfter": "result: str (first candidate)",
+      "steps": [
+        [
+          "An unknown-length list reaches two overloads.",
+          "We trace the zero-parameter candidate here. The one-int candidate separately matches the same splat."
+        ],
+        [
+          "The zero-candidate sees Star([], int, []).",
+          "Its local data is the same as case \u2460. The baseline comment explicitly mentioned avoiding zero-arity overload swallowing."
+        ],
+        [
+          "The zero-candidate cannot set matched=true.",
+          "The one-int candidate can set matched=true and was already accepted before this PR."
+        ],
+        [
+          "The zero-candidate now survives argument checking.",
+          "Before its extra-argument error eliminated it. After it adds no call error, so both candidates can proceed."
+        ],
+        [
+          "The inferred return type changes from int to str.",
+          "In default overload mode this example chooses the first surviving candidate. The PR therefore changes a downstream inference policy as well as arity diagnostics."
+        ]
+      ],
+      "outcomeTitle": "Verified default-mode reveal_type: int \u2192 str",
+      "outcome": "This is an important intentional-policy question, not a standalone proof that only the PR is unsound. Add a return-type test and decide what uncertain arity should mean for overloaded calls.",
+      "lessonTitle": "A diagnostic also acts as candidate-filter data.",
+      "lesson": "extra_positional_args feeds call_errors. Overload matching uses call_errors to eliminate candidates; removing an error can change the selected return type.",
+      "tracePython": "@overload\ndef choose() -> str: ...\n@overload\ndef choose(x: int, /) -> int: ...\n\ndef g(xs: list[int]):\n    reveal_type(choose(*xs))",
+      "traceFocus": "reveal_type(choose(*xs))"
+    }
+  ],
+  "defs": {
+    "prefix": {
+      "description": "Mandatory leading element types. Preserved for a single unpacked tuple; discarded for incompatible union shapes.",
+      "start": 578,
+      "end": 589,
+      "code": "(prefix.clone(), middle.clone(), suffix.clone())\n// Otherwise:\n(Vec::new(), solver.get_produced_type(iterables), Vec::new())",
+      "stateKey": "prefix"
+    },
+    "middle": {
+      "description": "Element type for the unknown-length region\u2014not a count. is_any() is the gradual-typing escape hatch.",
+      "start": 578,
+      "end": 589,
+      "code": "middle: Type\n// list[int] produces middle = int.",
+      "stateKey": "middle"
+    },
+    "suffix": {
+      "description": "Mandatory trailing element types. Stored without a suffix-consumption cursor.",
+      "start": 610,
+      "end": 616,
+      "code": "Star {\n    prefix: Vec<Type>,\n    middle: Type,\n    suffix: Vec<Type>,\n    consumed: usize,\n    matched: bool,\n    done: bool,\n}",
+      "stateKey": "suffix"
+    },
+    "consumed": {
+      "description": "Count of matched fixed prefix elements. It does not count arbitrary middle elements or suffix positions.",
+      "start": 675,
+      "end": 694,
+      "code": "if !vararg && *consumed < prefix.len() {\n    *consumed += 1;\n}",
+      "stateKey": "consumed"
+    },
+    "matched": {
+      "description": "Per-splat history: this Star has matched at least one nonvariadic positional parameter. It starts false on every pre_eval.",
+      "start": 590,
+      "end": 596,
+      "code": "CallArgPreEval::Star {\n    prefix, middle, suffix,\n    consumed: 0,\n    matched: false,\n    done: false,\n}\n// Set to true by advance_after_match at line 691.",
+      "stateKey": "matched"
+    },
+    "done": {
+      "description": "Whether this source argument is done being offered. The exhausted-parameter branch breaks the loop without setting done.",
+      "start": 622,
+      "end": 625,
+      "code": "Self::Star { done, .. } => !*done\n// advance_after_match: *done = vararg;",
+      "stateKey": "done"
+    },
+    "rparams": {
+      "description": "Reverse-ordered stack of remaining parameters. last() is next; ordinary matches pop it. Empty means no next parameter.",
+      "start": 1253,
+      "end": 1257,
+      "code": "let mut rparams = params.items().iter().rev().collect::<Vec<_>>();\nlet mut num_positional_params = 0;\nlet mut extra_positional_args = Vec::new();",
+      "stateKey": "remaining"
+    },
+    "arg_pre": {
+      "description": "This source argument\u2019s normalized shape and matching state. One Star may be offered repeatedly; a fixed tuple is a different variant.",
+      "start": 1308,
+      "end": 1314,
+      "code": "let mut arg_pre = arg.pre_eval(self, arg_errors);\nwhile arg_pre.step() {\n    let param = if let Some(p) = rparams.last() {\n        PosParam::new(p)\n    } ...\n}"
+    },
+    "param": {
+      "description": "The next positional parameter view, if any. None also occurs when the next remaining parameter is keyword-only; it does not always mean rparams is literally empty.",
+      "start": 1312,
+      "end": 1341,
+      "code": "let param = if let Some(p) = rparams.last() {\n    PosParam::new(p)\n} ... else {\n    None\n};"
+    },
+    "extra_arg": {
+      "description": "Boolean produced by the inner match expression. false skips appending an extra source range; then break exits this argument\u2019s while loop. The surrounding function continues and later returns ArgMap, with errors in separate collectors.",
+      "start": 1460,
+      "end": 1484,
+      "code": "if extra_arg {\n    extra_positional_args.push(arg.range());\n    ...\n}",
+      "stateKey": "extra_arg"
+    },
+    "has_unconsumed_fixed": {
+      "description": "Evidence retained in this shape: an unconsumed prefix or any suffix. It is not necessarily the original iterable\u2019s minimum length.",
+      "start": 1469,
+      "end": 1474,
+      "code": "let has_unconsumed_fixed =\n    *consumed < prefix.len() || !suffix.is_empty();\nif *matched || !has_unconsumed_fixed {\n    false\n} else {\n    !middle.is_any()\n}",
+      "stateKey": "has_unconsumed_fixed"
+    },
+    "extra_positional_args": {
+      "description": "Ranges of extra source arguments. Its length later contributes to BadArgumentCount and to overload candidate filtering.",
+      "start": 2291,
+      "end": 2313,
+      "code": "let num_extra_positional_args = extra_positional_args.len();\n...\nErrorKind::BadArgumentCount,\nformat!(\"Expected {expected}, got {actual}\"),"
+    },
+    "num_positional_params": {
+      "description": "Count of matched and otherwise accounted positional parameters; later combined with the number of extra source ranges.",
+      "start": 1255,
+      "end": 1257,
+      "code": "let mut num_positional_params = 0;\n// Updated in positional matching and later parameter accounting."
+    },
+    "argmap": {
+      "description": "Matching metadata returned by callable_infer_params. Diagnostics are a separate side effect; an empty map is not a validity verdict. In these zero-parameter traces no argument maps to a parameter.",
+      "start": 919,
+      "end": 930,
+      "code": "ArgMap {\n    arg_to_param: HashMap<ArgumentKey, MatchedParam>,\n    unmatched_params: SmallSet<Option<Name>>,\n}"
+    }
+  },
+  "excerpts": {
+    "gate": [
+      {
+        "n": 1453,
+        "text": "                    None => {",
+        "add": false
+      },
+      {
+        "n": 1454,
+        "text": "                        arg_pre.post_infer(self, arg_errors);",
+        "add": false
+      },
+      {
+        "n": 1455,
+        "text": "                        // A gradual splat can match any arity. An unknown-length splat without",
+        "add": true
+      },
+      {
+        "n": 1456,
+        "text": "                        // unconsumed fixed elements has a minimum length of 0, so it does not",
+        "add": true
+      },
+      {
+        "n": 1457,
+        "text": "                        // represent an extra argument if the parameter list is empty or already",
+        "add": true
+      },
+      {
+        "n": 1458,
+        "text": "                        // satisfied (fixes #5542). If it has already matched a parameter, it can",
+        "add": true
+      },
+      {
+        "n": 1459,
+        "text": "                        // stop matching without error.",
+        "add": true
+      },
+      {
+        "n": 1460,
+        "text": "                        let extra_arg = match &arg_pre {",
+        "add": true
+      },
+      {
+        "n": 1461,
+        "text": "                            CallArgPreEval::Star {",
+        "add": true
+      },
+      {
+        "n": 1462,
+        "text": "                                prefix,",
+        "add": true
+      },
+      {
+        "n": 1463,
+        "text": "                                suffix,",
+        "add": true
+      },
+      {
+        "n": 1464,
+        "text": "                                consumed,",
+        "add": true
+      },
+      {
+        "n": 1465,
+        "text": "                                middle,",
+        "add": true
+      },
+      {
+        "n": 1466,
+        "text": "                                matched,",
+        "add": true
+      },
+      {
+        "n": 1467,
+        "text": "                                ..",
+        "add": true
+      },
+      {
+        "n": 1468,
+        "text": "                            } => {",
+        "add": true
+      },
+      {
+        "n": 1469,
+        "text": "                                let has_unconsumed_fixed =",
+        "add": true
+      },
+      {
+        "n": 1470,
+        "text": "                                    *consumed < prefix.len() || !suffix.is_empty();",
+        "add": true
+      },
+      {
+        "n": 1471,
+        "text": "                                if *matched || !has_unconsumed_fixed {",
+        "add": true
+      },
+      {
+        "n": 1472,
+        "text": "                                    false",
+        "add": true
+      },
+      {
+        "n": 1473,
+        "text": "                                } else {",
+        "add": true
+      },
+      {
+        "n": 1474,
+        "text": "                                    !middle.is_any()",
+        "add": true
+      },
+      {
+        "n": 1475,
+        "text": "                                }",
+        "add": true
+      },
+      {
+        "n": 1476,
+        "text": "                            }",
+        "add": true
+      },
+      {
+        "n": 1477,
+        "text": "                            _ => true,",
+        "add": false
+      },
+      {
+        "n": 1478,
+        "text": "                        };",
+        "add": false
+      },
+      {
+        "n": 1479,
+        "text": "                        if extra_arg {",
+        "add": false
+      },
+      {
+        "n": 1480,
+        "text": "                            extra_positional_args.push(arg.range());",
+        "add": false
+      },
+      {
+        "n": 1481,
+        "text": "                            if extra_arg_pos.is_none() {",
+        "add": false
+      },
+      {
+        "n": 1482,
+        "text": "                                extra_arg_pos = Some(arg.range());",
+        "add": false
+      },
+      {
+        "n": 1483,
+        "text": "                            }",
+        "add": false
+      },
+      {
+        "n": 1484,
+        "text": "                        }",
+        "add": false
+      },
+      {
+        "n": 1485,
+        "text": "                        break;",
+        "add": false
+      }
+    ],
+    "create": [
+      {
+        "n": 550,
+        "text": "                // If we have a union of iterables, use a fixed length only if every iterable is",
+        "add": false
+      },
+      {
+        "n": 551,
+        "text": "                // fixed and has the same length. Otherwise, use star.",
+        "add": false
+      },
+      {
+        "n": 552,
+        "text": "                let mut fixed_lens = Vec::new();",
+        "add": false
+      },
+      {
+        "n": 553,
+        "text": "                for x in iterables.iter() {",
+        "add": false
+      },
+      {
+        "n": 554,
+        "text": "                    match x {",
+        "add": false
+      },
+      {
+        "n": 555,
+        "text": "                        Iterable::FixedLen(xs) => fixed_lens.push(xs.len()),",
+        "add": false
+      },
+      {
+        "n": 556,
+        "text": "                        Iterable::OfType(_)",
+        "add": false
+      },
+      {
+        "n": 557,
+        "text": "                        | Iterable::Unpacked { .. }",
+        "add": false
+      },
+      {
+        "n": 558,
+        "text": "                        | Iterable::OfTypeVarTuple(_) => {}",
+        "add": false
+      },
+      {
+        "n": 559,
+        "text": "                    }",
+        "add": false
+      },
+      {
+        "n": 560,
+        "text": "                }",
+        "add": false
+      },
+      {
+        "n": 561,
+        "text": "                if !fixed_lens.is_empty()",
+        "add": false
+      },
+      {
+        "n": 562,
+        "text": "                    && fixed_lens.len() == iterables.len()",
+        "add": false
+      },
+      {
+        "n": 563,
+        "text": "                    && fixed_lens.iter().all(|len| *len == fixed_lens[0])",
+        "add": false
+      },
+      {
+        "n": 575,
+        "text": "                } else {",
+        "add": false
+      },
+      {
+        "n": 576,
+        "text": "                    // A lone unpacked tuple has fixed ends at known positions, so keep",
+        "add": false
+      },
+      {
+        "n": 577,
+        "text": "                    // its shape. A union of iterables has no single shape to keep.",
+        "add": false
+      },
+      {
+        "n": 578,
+        "text": "                    let (prefix, middle, suffix) = if let [",
+        "add": false
+      },
+      {
+        "n": 579,
+        "text": "                        Iterable::Unpacked {",
+        "add": false
+      },
+      {
+        "n": 580,
+        "text": "                            prefix,",
+        "add": false
+      },
+      {
+        "n": 581,
+        "text": "                            middle,",
+        "add": false
+      },
+      {
+        "n": 582,
+        "text": "                            suffix,",
+        "add": false
+      },
+      {
+        "n": 583,
+        "text": "                        },",
+        "add": false
+      },
+      {
+        "n": 584,
+        "text": "                    ] = iterables.as_slice()",
+        "add": false
+      },
+      {
+        "n": 585,
+        "text": "                    {",
+        "add": false
+      },
+      {
+        "n": 586,
+        "text": "                        (prefix.clone(), middle.clone(), suffix.clone())",
+        "add": false
+      },
+      {
+        "n": 587,
+        "text": "                    } else {",
+        "add": false
+      },
+      {
+        "n": 588,
+        "text": "                        (Vec::new(), solver.get_produced_type(iterables), Vec::new())",
+        "add": false
+      },
+      {
+        "n": 589,
+        "text": "                    };",
+        "add": false
+      },
+      {
+        "n": 590,
+        "text": "                    CallArgPreEval::Star {",
+        "add": false
+      },
+      {
+        "n": 591,
+        "text": "                        prefix,",
+        "add": false
+      },
+      {
+        "n": 592,
+        "text": "                        middle,",
+        "add": false
+      },
+      {
+        "n": 593,
+        "text": "                        suffix,",
+        "add": false
+      },
+      {
+        "n": 594,
+        "text": "                        consumed: 0,",
+        "add": false
+      },
+      {
+        "n": 595,
+        "text": "                        matched: false,",
+        "add": false
+      },
+      {
+        "n": 596,
+        "text": "                        done: false,",
+        "add": false
+      },
+      {
+        "n": 597,
+        "text": "                    }",
+        "add": false
+      }
+    ],
+    "loop": [
+      {
+        "n": 1253,
+        "text": "        // Creates a reversed copy of the parameters that we iterate through from back to front,",
+        "add": false
+      },
+      {
+        "n": 1254,
+        "text": "        // so that we can easily peek at and pop from the end.",
+        "add": false
+      },
+      {
+        "n": 1255,
+        "text": "        let mut rparams = params.items().iter().rev().collect::<Vec<_>>();",
+        "add": false
+      },
+      {
+        "n": 1256,
+        "text": "        let mut num_positional_params = 0;",
+        "add": false
+      },
+      {
+        "n": 1257,
+        "text": "        let mut extra_positional_args = Vec::new();",
+        "add": false
+      },
+      {
+        "n": 1308,
+        "text": "            let argument = ArgumentKey::Positional(argument_index);",
+        "add": false
+      },
+      {
+        "n": 1309,
+        "text": "            let call_context = &call_context.clone().with_argument(argument);",
+        "add": false
+      },
+      {
+        "n": 1310,
+        "text": "            let mut arg_pre = arg.pre_eval(self, arg_errors);",
+        "add": false
+      },
+      {
+        "n": 1311,
+        "text": "            while arg_pre.step() {",
+        "add": false
+      },
+      {
+        "n": 1312,
+        "text": "                let param = if let Some(p) = rparams.last() {",
+        "add": false
+      },
+      {
+        "n": 1313,
+        "text": "                    PosParam::new(p)",
+        "add": false
+      },
+      {
+        "n": 1314,
+        "text": "                } else if let Some(var) = paramspec {",
+        "add": false
+      },
+      {
+        "n": 1339,
+        "text": "                } else {",
+        "add": false
+      },
+      {
+        "n": 1340,
+        "text": "                    None",
+        "add": false
+      },
+      {
+        "n": 1341,
+        "text": "                };",
+        "add": false
+      },
+      {
+        "n": 1342,
+        "text": "                match param {",
+        "add": false
+      },
+      {
+        "n": 1343,
+        "text": "                    Some(PosParam {",
+        "add": false
+      },
+      {
+        "n": 1344,
+        "text": "                        ty,",
+        "add": false
+      },
+      {
+        "n": 1345,
+        "text": "                        name,",
+        "add": false
+      },
+      {
+        "n": 1346,
+        "text": "                        kind: kind @ (PosParamKind::PositionalOnly | PosParamKind::Positional),",
+        "add": false
+      },
+      {
+        "n": 1347,
+        "text": "                    }) => {",
+        "add": false
+      },
+      {
+        "n": 1357,
+        "text": "                        }",
+        "add": false
+      },
+      {
+        "n": 1358,
+        "text": "                        num_positional_params += 1;",
+        "add": false
+      },
+      {
+        "n": 1359,
+        "text": "                        rparams.pop();",
+        "add": false
+      },
+      {
+        "n": 1360,
+        "text": "                        if let Some(name) = name",
+        "add": false
+      },
+      {
+        "n": 1361,
+        "text": "                            && kind == PosParamKind::Positional",
+        "add": false
+      },
+      {
+        "n": 1362,
+        "text": "                        {",
+        "add": false
+      },
+      {
+        "n": 1405,
+        "text": "                            && let Some(ty) = unhinted_arg_ty.or(arg_ty)",
+        "add": false
+      },
+      {
+        "n": 1406,
+        "text": "                        {",
+        "add": false
+      },
+      {
+        "n": 1407,
+        "text": "                            record(bound_args, name, ty);",
+        "add": false
+      },
+      {
+        "n": 1408,
+        "text": "                        }",
+        "add": false
+      },
+      {
+        "n": 1409,
+        "text": "                    }",
+        "add": false
+      },
+      {
+        "n": 1410,
+        "text": "                    Some(PosParam {",
+        "add": false
+      },
+      {
+        "n": 1411,
+        "text": "                        ty,",
+        "add": false
+      },
+      {
+        "n": 1412,
+        "text": "                        name,",
+        "add": false
+      },
+      {
+        "n": 1413,
+        "text": "                        kind: PosParamKind::Unpacked,",
+        "add": false
+      },
+      {
+        "n": 1414,
+        "text": "                    }) => {",
+        "add": false
+      },
+      {
+        "n": 1415,
+        "text": "                        // Store args that get matched to an unpacked *args param",
+        "add": false
+      },
+      {
+        "n": 1416,
+        "text": "                        // Matched args are typechecked separately later",
+        "add": false
+      },
+      {
+        "n": 1417,
+        "text": "                        argmap.insert(argument, ty.clone(), name.cloned());",
+        "add": false
+      },
+      {
+        "n": 1418,
+        "text": "                        unpacked_vararg = Some((name, ty));",
+        "add": false
+      },
+      {
+        "n": 1419,
+        "text": "                        unpacked_vararg_matched_args.push((arg_pre.clone(), arg.range()));",
+        "add": false
+      },
+      {
+        "n": 1420,
+        "text": "                        arg_pre.post_skip();",
+        "add": false
+      },
+      {
+        "n": 1421,
+        "text": "                    }",
+        "add": false
+      }
+    ],
+    "advance": [
+      {
+        "n": 674,
+        "text": "    /// Advance past one matched parameter without changing how its argument is interpreted.",
+        "add": false
+      },
+      {
+        "n": 675,
+        "text": "    fn advance_after_match(&mut self, vararg: bool) {",
+        "add": false
+      },
+      {
+        "n": 676,
+        "text": "        match self {",
+        "add": false
+      },
+      {
+        "n": 677,
+        "text": "            Self::Type(_, done) | Self::Expr(_, _, done) => *done = true,",
+        "add": false
+      },
+      {
+        "n": 678,
+        "text": "            Self::Star {",
+        "add": false
+      },
+      {
+        "n": 679,
+        "text": "                prefix,",
+        "add": false
+      },
+      {
+        "n": 680,
+        "text": "                consumed,",
+        "add": false
+      },
+      {
+        "n": 681,
+        "text": "                matched,",
+        "add": false
+      },
+      {
+        "n": 682,
+        "text": "                done,",
+        "add": false
+      },
+      {
+        "n": 683,
+        "text": "                ..",
+        "add": false
+      },
+      {
+        "n": 684,
+        "text": "            } => {",
+        "add": false
+      },
+      {
+        "n": 685,
+        "text": "                if !vararg && *consumed < prefix.len() {",
+        "add": false
+      },
+      {
+        "n": 686,
+        "text": "                    // A prefix element is consumed once matched; the variadic tail remains on",
+        "add": false
+      },
+      {
+        "n": 687,
+        "text": "                    // offer to every later parameter.",
+        "add": false
+      },
+      {
+        "n": 688,
+        "text": "                    *consumed += 1;",
+        "add": false
+      },
+      {
+        "n": 689,
+        "text": "                }",
+        "add": false
+      },
+      {
+        "n": 690,
+        "text": "                if !vararg {",
+        "add": false
+      },
+      {
+        "n": 691,
+        "text": "                    *matched = true;",
+        "add": false
+      },
+      {
+        "n": 692,
+        "text": "                }",
+        "add": false
+      },
+      {
+        "n": 693,
+        "text": "                *done = vararg;",
+        "add": false
+      },
+      {
+        "n": 694,
+        "text": "            }",
+        "add": false
+      },
+      {
+        "n": 695,
+        "text": "            Self::Fixed(_, index) => *index += 1,",
+        "add": false
+      },
+      {
+        "n": 696,
+        "text": "        }",
+        "add": false
+      }
+    ],
+    "sink": [
+      {
+        "n": 1479,
+        "text": "                        if extra_arg {",
+        "add": false
+      },
+      {
+        "n": 1480,
+        "text": "                            extra_positional_args.push(arg.range());",
+        "add": false
+      },
+      {
+        "n": 1481,
+        "text": "                            if extra_arg_pos.is_none() {",
+        "add": false
+      },
+      {
+        "n": 1482,
+        "text": "                                extra_arg_pos = Some(arg.range());",
+        "add": false
+      },
+      {
+        "n": 1483,
+        "text": "                            }",
+        "add": false
+      },
+      {
+        "n": 1484,
+        "text": "                        }",
+        "add": false
+      },
+      {
+        "n": 1485,
+        "text": "                        break;",
+        "add": false
+      },
+      {
+        "n": 2291,
+        "text": "        let num_extra_positional_args = extra_positional_args.len();",
+        "add": false
+      },
+      {
+        "n": 2292,
+        "text": "        if let Some(arg_range) = extra_arg_pos",
+        "add": false
+      },
+      {
+        "n": 2293,
+        "text": "            // This error is redundant if we've already reported an error for every individual arg.",
+        "add": false
+      },
+      {
+        "n": 2294,
+        "text": "            && extra_posargs_matched < num_extra_positional_args",
+        "add": false
+      },
+      {
+        "n": 2295,
+        "text": "        {",
+        "add": false
+      },
+      {
+        "n": 2296,
+        "text": "            let (expected, actual) = if missing_self_param {",
+        "add": false
+      },
+      {
+        "n": 2297,
+        "text": "                (",
+        "add": false
+      },
+      {
+        "n": 2298,
+        "text": "                    \"0 positional arguments\".to_owned(),",
+        "add": false
+      },
+      {
+        "n": 2299,
+        "text": "                    format!(\"{num_extra_positional_args} (including implicit `self`)\"),",
+        "add": false
+      },
+      {
+        "n": 2300,
+        "text": "                )",
+        "add": false
+      },
+      {
+        "n": 2301,
+        "text": "            } else {",
+        "add": false
+      },
+      {
+        "n": 2302,
+        "text": "                let num_positional_params = num_positional_params - (self_arg.is_some() as usize);",
+        "add": false
+      },
+      {
+        "n": 2303,
+        "text": "                (",
+        "add": false
+      },
+      {
+        "n": 2304,
+        "text": "                    count(num_positional_params, \"positional argument\"),",
+        "add": false
+      },
+      {
+        "n": 2305,
+        "text": "                    (num_positional_params + num_extra_positional_args).to_string(),",
+        "add": false
+      },
+      {
+        "n": 2306,
+        "text": "                )",
+        "add": false
+      },
+      {
+        "n": 2307,
+        "text": "            };",
+        "add": false
+      },
+      {
+        "n": 2308,
+        "text": "            error(",
+        "add": false
+      },
+      {
+        "n": 2309,
+        "text": "                call_errors,",
+        "add": false
+      },
+      {
+        "n": 2310,
+        "text": "                arg_range,",
+        "add": false
+      },
+      {
+        "n": 2311,
+        "text": "                ErrorKind::BadArgumentCount,",
+        "add": false
+      },
+      {
+        "n": 2312,
+        "text": "                format!(\"Expected {expected}, got {actual}\"),",
+        "add": false
+      },
+      {
+        "n": 2313,
+        "text": "            );",
+        "add": false
+      }
+    ],
+    "caller": [
+      {
+        "n": 2710,
+        "text": "        let self_arg = self_obj.as_ref().map(|ty| CallArg::ty(ty, arguments_range));"
+      },
+      {
+        "n": 2711,
+        "text": "        let argmap = match callable.params {"
+      },
+      {
+        "n": 2712,
+        "text": "            Params::List(params) | Params::Partial(params) => self.callable_infer_params("
+      },
+      {
+        "n": 2713,
+        "text": "                callable_name,"
+      },
+      {
+        "n": 2714,
+        "text": "                &params,"
+      },
+      {
+        "n": 2715,
+        "text": "                None,"
+      },
+      {
+        "n": 2716,
+        "text": "                self_arg,"
+      },
+      {
+        "n": 2717,
+        "text": "                &mut self_qs,"
+      },
+      {
+        "n": 2718,
+        "text": "                args,"
+      },
+      {
+        "n": 2719,
+        "text": "                keywords,"
+      },
+      {
+        "n": 2720,
+        "text": "                arguments_range,"
+      },
+      {
+        "n": 2721,
+        "text": "                arg_errors,"
+      },
+      {
+        "n": 2722,
+        "text": "                call_errors,"
+      },
+      {
+        "n": 2723,
+        "text": "                context,"
+      },
+      {
+        "n": 2724,
+        "text": "                &call_context,"
+      },
+      {
+        "n": 2725,
+        "text": "                &mut bound_args,"
+      },
+      {
+        "n": 2726,
+        "text": "            ),"
+      },
+      {
+        "n": 2836,
+        "text": "        let (overload_table, finish_result, defaults_used) = self.solver().finish_call_boundary("
+      },
+      {
+        "n": 2837,
+        "text": "            self.solver().config.infer_with_first_use,"
+      },
+      {
+        "n": 2838,
+        "text": "            self.type_order(),"
+      },
+      {
+        "n": 2839,
+        "text": "            call_boundary,"
+      },
+      {
+        "n": 2840,
+        "text": "        );"
+      },
+      {
+        "n": 2841,
+        "text": "        let mut errors = finish_result.map_or_else(|e| e.to_vec(), |_| Vec::new());"
+      },
+      {
+        "n": 2842,
+        "text": "        errors.extend(restriction_errors);"
+      },
+      {
+        "n": 2869,
+        "text": "        } else {"
+      },
+      {
+        "n": 2870,
+        "text": "            callable.ret.clone()"
+      },
+      {
+        "n": 2871,
+        "text": "        };"
+      },
+      {
+        "n": 2872,
+        "text": ""
+      },
+      {
+        "n": 2873,
+        "text": "        let (ret, type_level_dsl_errors) = self.finish_return(&overload_table, ret);"
+      },
+      {
+        "n": 2874,
+        "text": "        let return_type_errors = type_level_dsl_errors"
+      },
+      {
+        "n": 2875,
+        "text": "            .into_iter()"
+      },
+      {
+        "n": 2876,
+        "text": "            .map(ReturnTypeResolutionError::TypeLevelDsl)"
+      },
+      {
+        "n": 2879,
+        "text": "        ("
+      },
+      {
+        "n": 2880,
+        "text": "            self.reproject_tuple_carrier_shape(ret),"
+      },
+      {
+        "n": 2881,
+        "text": "            errors,"
+      },
+      {
+        "n": 2882,
+        "text": "            return_type_errors,"
+      },
+      {
+        "n": 2883,
+        "text": "            argmap,"
+      },
+      {
+        "n": 2884,
+        "text": "            defaults_used,"
+      },
+      {
+        "n": 2885,
+        "text": "            overload_table,"
+      },
+      {
+        "n": 2886,
+        "text": "        )"
+      }
+    ],
+    "nest": [
+      {
+        "n": 1303,
+        "text": "            .iter()"
+      },
+      {
+        "n": 1304,
+        "text": "            .map(|arg| (arg, true))"
+      },
+      {
+        "n": 1305,
+        "text": "            .chain(args.iter().map(|arg| (arg, false)))"
+      },
+      {
+        "n": 1306,
+        "text": "            .enumerate()"
+      },
+      {
+        "n": 1307,
+        "text": "        {"
+      },
+      {
+        "n": 1308,
+        "text": "            let argument = ArgumentKey::Positional(argument_index);"
+      },
+      {
+        "n": 1309,
+        "text": "            let call_context = &call_context.clone().with_argument(argument);"
+      },
+      {
+        "n": 1310,
+        "text": "            let mut arg_pre = arg.pre_eval(self, arg_errors);"
+      },
+      {
+        "n": 1311,
+        "text": "            while arg_pre.step() {"
+      },
+      {
+        "n": 1312,
+        "text": "                let param = if let Some(p) = rparams.last() {"
+      },
+      {
+        "n": 1313,
+        "text": "                    PosParam::new(p)"
+      },
+      {
+        "n": 1339,
+        "text": "                } else {"
+      },
+      {
+        "n": 1340,
+        "text": "                    None"
+      },
+      {
+        "n": 1341,
+        "text": "                };"
+      },
+      {
+        "n": 1342,
+        "text": "                match param {"
+      },
+      {
+        "n": 1453,
+        "text": "                    None => {"
+      },
+      {
+        "n": 1454,
+        "text": "                        arg_pre.post_infer(self, arg_errors);"
+      },
+      {
+        "n": 1460,
+        "text": "                        let extra_arg = match &arg_pre {"
+      },
+      {
+        "n": 1461,
+        "text": "                            CallArgPreEval::Star {"
+      },
+      {
+        "n": 1468,
+        "text": "                            } => {"
+      },
+      {
+        "n": 1469,
+        "text": "                                let has_unconsumed_fixed ="
+      },
+      {
+        "n": 1470,
+        "text": "                                    *consumed < prefix.len() || !suffix.is_empty();"
+      },
+      {
+        "n": 1471,
+        "text": "                                if *matched || !has_unconsumed_fixed {"
+      },
+      {
+        "n": 1472,
+        "text": "                                    false"
+      },
+      {
+        "n": 1473,
+        "text": "                                } else {"
+      },
+      {
+        "n": 1474,
+        "text": "                                    !middle.is_any()"
+      },
+      {
+        "n": 1475,
+        "text": "                                }"
+      },
+      {
+        "n": 1476,
+        "text": "                            }"
+      },
+      {
+        "n": 1477,
+        "text": "                            _ => true,"
+      },
+      {
+        "n": 1478,
+        "text": "                        };"
+      },
+      {
+        "n": 1479,
+        "text": "                        if extra_arg {"
+      },
+      {
+        "n": 1480,
+        "text": "                            extra_positional_args.push(arg.range());"
+      },
+      {
+        "n": 1481,
+        "text": "                            if extra_arg_pos.is_none() {"
+      },
+      {
+        "n": 1482,
+        "text": "                                extra_arg_pos = Some(arg.range());"
+      },
+      {
+        "n": 1483,
+        "text": "                            }"
+      },
+      {
+        "n": 1484,
+        "text": "                        }"
+      },
+      {
+        "n": 1485,
+        "text": "                        break;"
+      },
+      {
+        "n": 1486,
+        "text": "                    }"
+      },
+      {
+        "n": 1487,
+        "text": "                }"
+      },
+      {
+        "n": 1488,
+        "text": "            }"
+      }
+    ]
+  },
+  "lineNotes": {
+    "1469": "This new local summarizes retained fixed shape. Hover the prefix/suffix data boxes to locate the upstream shape-preservation logic.",
+    "1470": {
+      "zero": "0 < 0 is false; suffix is empty. The list may contribute zero elements.",
+      "union": "0 < 0 is false; suffix is empty. But [1,2] was erased upstream, so this is not a valid proof of zero possibility.",
+      "prefix": "0 < 1 is true: the mandatory first int remains.",
+      "suffix": "The prefix comparison is false, but the nonempty suffix makes the OR true.",
+      "matched": "1 < 2 is true: the second fixed int remains.",
+      "default": "The predicate inspects retained fixed ends and the prefix cursor."
+    },
+    "1471": {
+      "matched": "matched=true short-circuits before the mandatory remainder can cause an error. This is preexisting logic retained by the patch.",
+      "default": "Accept if this splat has matched a parameter OR if it has no retained mandatory remainder."
+    },
+    "1472": "This false is the match-arm value assigned to extra_arg, not a function return. It skips the append to extra_positional_args; the loop then breaks and remaining argument/keyword analysis continues.",
+    "1474": "Gradual middle=Any still bypasses arity rejection, as it did before this PR.",
+    "1480": "One source range is pushed, not one range per runtime element. That is where the baseline\u2019s diagnostic \u201cgot 1\u201d comes from.",
+    "588": "The fallback unions produced element types and replaces both fixed ends with []. Different possible lengths are not retained.",
+    "691": "History changes to true only after a positional match. For zero-parameter calls this line is never reached.",
+    "688": "Increment only while there is a fixed prefix element at this cursor; no suffix element is removed.",
+    "2291": "The downstream error emitter counts extra source ranges. A change here also affects overload candidate elimination.",
+    "2883": "callable_infer_inner returns ArgMap beside the inferred Python result type, not instead of it. Overload matching retains this map as candidate metadata.",
+    "2712": "This caller receives ArgMap while callable_infer_params reports diagnostics through the error collectors passed by reference.",
+    "1311": "The while loop belongs to one source argument. A Star stays available after a finite positional match; an empty parameter stack brings it to the None branch.",
+    "1340": "No concrete positional parameter remains to be matched. This triggers the None arm below; keyword-only parameters may still remain.",
+    "1460": "The result of the inner match expression is stored in extra_arg. Its type is bool. The enclosing function returns ArgMap later.",
+    "1485": "break leaves only this argument\u2019s while loop. The outer for loop, missing-parameter checks, keyword checks, and final error accounting continue."
+  },
+  "evidence": "Exact source excerpts are pinned to public PR head 2a215a3bb5880f5f7e94a2d7cb65d12850247c2b. Internal checker states are reconstructed from source, not recorded by instrumentation. Historical CLI outputs came from applying the exact gate to another Pyrefly checkout, not an exact GitHub-head build. The public fixture retains the inputs and diagnostics, but does not claim to reproduce that build or current Pyrefly behavior. Linux, default overload mode; no full suite or primer evaluation. Runtime witnesses were checked separately. No changes to the reviewed PR were posted.",
+  "results": "nonempty tuple union:\n  BEFORE ['Expected 0 positional arguments, got 1 in function `no_args`']\n  AFTER  no diagnostic\nlist to zero-param:\n  BEFORE ['Expected 0 positional arguments, got 1 in function `no_args`']\n  AFTER  no diagnostic\nexplicit then list:\n  BEFORE ['Expected 1 positional argument, got 2 in function `unary`']\n  AFTER  no diagnostic\nfixed prefix:\n  BEFORE ['Expected 0 positional arguments, got 1 in function `no_args`']\n  AFTER  ['Expected 0 positional arguments, got 1 in function `no_args`']\nfixed suffix:\n  BEFORE ['Expected 0 positional arguments, got 1 in function `no_args`']\n  AFTER  ['Expected 0 positional arguments, got 1 in function `no_args`']\nunconsumed fixed prefix after match:\n  BEFORE no diagnostic\n  AFTER  no diagnostic\noverload on list:\n  BEFORE ['revealed type: int']\n  AFTER  ['revealed type: str']"
+}
